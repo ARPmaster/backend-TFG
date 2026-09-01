@@ -1,7 +1,8 @@
 # SmartCollect — Backend (Cloud Functions)
 
-Backend serverless de SmartCollect sobre Firebase Cloud Functions. El cliente Android vive en un
-repositorio aparte. Se usa solo para dos cosas que el cliente no puede resolver por sí solo:
+Backend serverless de SmartCollect sobre Firebase Cloud Functions. El cliente Android vive en
+[SmartCollect-trabajo-de-final-de-carrera](https://github.com/ARPmaster/SmartCollect-trabajo-de-final-de-carrera).
+Se usa solo para dos cosas que el cliente no puede resolver por sí solo:
 
 - **`recognizeItem`** — identifica un objeto a partir de una foto para autorrellenar una
   publicación nueva.
