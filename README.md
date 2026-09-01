@@ -48,6 +48,19 @@ entrada distintos):
 nunca la imagen ni el contenido íntegro de la respuesta de Gemini salvo cuando ya falló el
 parseo), visible en Cloud Functions → Logs.
 
+**Validación de entrada y cuota**: las tres funciones validan su payload antes de tocar
+Vision/Gemini/Firestore (`validation.ts`) — `recognizeItem` exige `imageBase64` como string no
+vacío y con un tamaño decodificado ≤ 8 MB; `searchValuation` exige `nombre` no vacío y que
+`marca`/`modelo`/`edicion`, si vienen, sean strings; `refreshValuation` exige `itemId` como string
+no vacío. Payload inválido → `HttpsError("invalid-argument", ...)`.
+
+Además, `recognizeItem` aplica una cuota diaria de **50 reconocimientos por usuario** (constante
+`DAILY_RECOGNITION_LIMIT` en `quota.ts`), contada en `usage/{uid}/daily/{yyyy-mm-dd}` e
+incrementada de forma atómica dentro de una transacción de Firestore — una llamada rechazada por
+cuota no cuenta contra el propio límite. Al superarla, devuelve
+`HttpsError("resource-exhausted", ...)`. `searchValuation`/`refreshValuation` no tienen cuota
+propia (dependen del caché de `products_cache`, que ya limita el gasto real en Gemini).
+
 ## Requisitos
 
 - Node.js 24.

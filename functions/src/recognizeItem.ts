@@ -4,10 +4,31 @@ import * as admin from "firebase-admin";
 import vision from "@google-cloud/vision";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Candidate, RankedCandidate, rankCandidates } from "./ranking";
+import { validateImageBase64 } from "./validation";
+import { DAILY_RECOGNITION_LIMIT, isOverDailyLimit, todayKey } from "./quota";
 
 admin.initializeApp();
 const visionClient = new vision.ImageAnnotatorClient();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const db = admin.firestore();
+
+/** Comprueba y consume la cuota diaria del usuario de forma atómica: si ya está en el límite,
+ * lanza sin incrementar (una llamada rechazada no cuenta contra el propio límite); si no, suma 1
+ * dentro de la misma transacción para que dos invocaciones concurrentes no se cuelen ambas. */
+async function checkAndConsumeDailyQuota(uid: string): Promise<void> {
+  const counterRef = db.collection("usage").doc(uid).collection("daily").doc(todayKey());
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(counterRef);
+    const currentCount = (snap.data()?.count as number | undefined) ?? 0;
+    if (isOverDailyLimit(currentCount)) {
+      throw new functions.HttpsError(
+        "resource-exhausted",
+        `Has alcanzado el límite diario de ${DAILY_RECOGNITION_LIMIT} reconocimientos. Inténtalo mañana.`,
+      );
+    }
+    transaction.set(counterRef, { count: admin.firestore.FieldValue.increment(1) }, { merge: true });
+  });
+}
 
 export const recognizeItem = functions.onCall(
   // timeoutSeconds subido de 60 (default) a 120 — el log de Cloud Run mostró una invocación real
@@ -21,10 +42,13 @@ export const recognizeItem = functions.onCall(
       throw new functions.HttpsError("unauthenticated", "Se requiere sesión iniciada");
     }
 
-    const { imageBase64 } = request.data as { imageBase64: string };
-    if (!imageBase64) {
-      throw new functions.HttpsError("invalid-argument", "Falta la imagen");
+    const validation = validateImageBase64(request.data);
+    if (!validation.ok) {
+      throw new functions.HttpsError("invalid-argument", validation.message);
     }
+    const imageBase64 = validation.value;
+
+    await checkAndConsumeDailyQuota(request.auth.uid);
 
     logger.info("recognizeItem: entrada", { uid: request.auth.uid, imageBytes: imageBase64.length });
 

@@ -71,3 +71,4 @@ node_modules/
 # Asistentes de código, no forman parte del proyecto
 .claude/
 .agents/
+skills-lock.json

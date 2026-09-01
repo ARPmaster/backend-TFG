@@ -8,6 +8,7 @@ import {
   extractGroundingSources,
   parseValuationJson,
 } from "./valuation";
+import { validateItemId, validateSearchValuationInput } from "./validation";
 
 // Guardado así (no admin.initializeApp() directo) para que este archivo no dependa de que
 // recognizeItem.ts se cargue primero — admin.initializeApp() lanza si se llama dos veces.
@@ -60,13 +61,12 @@ export const searchValuation = functions.onCall(
     if (!request.auth) {
       throw new functions.HttpsError("unauthenticated", "Se requiere sesión iniciada");
     }
-    const { nombre, marca, modelo, edicion } = request.data as {
-      nombre?: string;
-      marca?: string;
-      modelo?: string;
-      edicion?: string;
-    };
-    const { searchQuery, cacheKey } = buildSearchKey(nombre ?? "", marca, modelo, edicion);
+    const inputValidation = validateSearchValuationInput(request.data);
+    if (!inputValidation.ok) {
+      throw new functions.HttpsError("invalid-argument", inputValidation.message);
+    }
+    const { nombre, marca, modelo, edicion } = inputValidation.value;
+    const { searchQuery, cacheKey } = buildSearchKey(nombre, marca, modelo, edicion);
     if (!searchQuery) {
       throw new functions.HttpsError("invalid-argument", "Faltan datos para buscar el precio");
     }
@@ -89,10 +89,11 @@ export const refreshValuation = functions.onCall(
     }
     const uid = request.auth.uid;
 
-    const { itemId } = request.data as { itemId: string };
-    if (!itemId) {
-      throw new functions.HttpsError("invalid-argument", "Falta itemId");
+    const itemIdValidation = validateItemId(request.data);
+    if (!itemIdValidation.ok) {
+      throw new functions.HttpsError("invalid-argument", itemIdValidation.message);
     }
+    const itemId = itemIdValidation.value;
 
     logger.info("refreshValuation: entrada", { uid, itemId });
 
